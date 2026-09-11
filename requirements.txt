@@ -1,0 +1,4 @@
+requests>=2.32
+google-cloud-bigquery>=3.25
+pyarrow>=17
+tzdata; sys_platform == "win32"

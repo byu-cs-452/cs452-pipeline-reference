@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# Seeding etiquette: raw history is downloaded ONCE and kept locally.
+# It is never committed and never re-downloaded. See seed/README.md.
+data/
