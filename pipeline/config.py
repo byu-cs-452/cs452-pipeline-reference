@@ -8,7 +8,7 @@ which means there is no key to commit in the first place. See docs/secrets.md.
 
 import os
 
-GCP_PROJECT = os.environ.get("GCP_PROJECT", "cs393-496021")
+GCP_PROJECT = os.environ.get("GCP_PROJECT", "cs452-508317")
 BQ_DATASET = os.environ.get("BQ_DATASET", "usgs_pipeline")
 BQ_LOCATION = os.environ.get("BQ_LOCATION", "US")
 

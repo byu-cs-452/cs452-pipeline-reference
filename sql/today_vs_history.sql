@@ -14,7 +14,7 @@ WITH today AS (
     COUNT(*)                                  AS events_today,
     COUNTIF(mag >= 4.5)                       AS m45_plus_today,
     ROUND(MAX(mag), 1)                        AS biggest_today
-  FROM `cs393-496021.usgs_pipeline.events`
+  FROM `cs452-508317.usgs_pipeline.events`
   WHERE DATE(event_time) = CURRENT_DATE()
 ),
 historical_same_day AS (
@@ -23,7 +23,7 @@ historical_same_day AS (
     COUNTIF(mag >= 4.5) / COUNT(DISTINCT EXTRACT(YEAR FROM event_time)) AS avg_m45_plus,
     ROUND(MAX(mag), 1)                                       AS biggest_ever_this_day,
     COUNT(DISTINCT EXTRACT(YEAR FROM event_time))            AS years_of_history
-  FROM `cs393-496021.usgs_pipeline.events`
+  FROM `cs452-508317.usgs_pipeline.events`
   WHERE EXTRACT(DAYOFYEAR FROM event_time) = EXTRACT(DAYOFYEAR FROM CURRENT_DATE())
     AND DATE(event_time) < CURRENT_DATE()
 )
@@ -55,7 +55,7 @@ SELECT
   COUNTIF(mag >= 5 AND mag < 6) AS m5_to_m6,
   COUNTIF(mag >= 6)             AS m6_plus,
   COUNT(*)                      AS total
-FROM `cs393-496021.usgs_pipeline.events`
+FROM `cs452-508317.usgs_pipeline.events`
 WHERE event_time < TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), YEAR)  -- drop the partial year
 GROUP BY year
 ORDER BY year;
@@ -69,13 +69,13 @@ WITH recent AS (
   SELECT
     TIMESTAMP_TRUNC(event_time, HOUR) AS hour,
     COUNT(*)                          AS events
-  FROM `cs393-496021.usgs_pipeline.events`
+  FROM `cs452-508317.usgs_pipeline.events`
   WHERE event_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
   GROUP BY hour
 ),
 baseline AS (
   SELECT COUNT(*) / COUNT(DISTINCT TIMESTAMP_TRUNC(event_time, HOUR)) AS avg_events_per_hour
-  FROM `cs393-496021.usgs_pipeline.events`
+  FROM `cs452-508317.usgs_pipeline.events`
   WHERE event_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 3650 DAY)
     AND event_time <  TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 )

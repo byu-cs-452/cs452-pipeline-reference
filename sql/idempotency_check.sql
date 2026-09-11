@@ -9,7 +9,7 @@
 --    row that then falls through to INSERT -- this is where it shows up.
 -- ---------------------------------------------------------------------------
 SELECT id, COUNT(*) AS copies
-FROM `cs393-496021.usgs_pipeline.events`
+FROM `cs452-508317.usgs_pipeline.events`
 GROUP BY id
 HAVING COUNT(*) > 1
 ORDER BY copies DESC
@@ -23,7 +23,7 @@ SELECT
   COUNT(*)                              AS total_rows,
   COUNT(DISTINCT id)                    AS distinct_ids,
   COUNT(*) - COUNT(DISTINCT id)         AS duplicates
-FROM `cs393-496021.usgs_pipeline.events`;
+FROM `cs452-508317.usgs_pipeline.events`;
 
 
 -- ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ SELECT
   COUNT(*)                                                          AS events,
   ROUND(AVG(TIMESTAMP_DIFF(updated, event_time, HOUR)), 1)          AS avg_hours_to_last_revision,
   MAX(TIMESTAMP_DIFF(updated, event_time, DAY))                     AS max_days_to_last_revision
-FROM `cs393-496021.usgs_pipeline.events`
+FROM `cs452-508317.usgs_pipeline.events`
 WHERE updated IS NOT NULL
 GROUP BY status
 ORDER BY events DESC;
@@ -55,7 +55,7 @@ SELECT
   mode,
   rows_inserted,
   rows_updated
-FROM `cs393-496021.usgs_pipeline.ingest_runs`
+FROM `cs452-508317.usgs_pipeline.ingest_runs`
 WHERE rows_updated > 0
 ORDER BY started_at DESC
 LIMIT 25;

@@ -23,8 +23,8 @@ bound to the repository rather than to a string anybody can copy.
 ### Setup (once)
 
 ```bash
-PROJECT=cs393-496021
-PROJECT_NUMBER=620970916253
+PROJECT=cs452-508317
+PROJECT_NUMBER=168005390822
 REPO=byu-cs-452/cs452-pipeline-reference
 SA=usgs-pipeline-ingest@$PROJECT.iam.gserviceaccount.com
 
@@ -34,7 +34,12 @@ gcloud iam service-accounts create usgs-pipeline-ingest --project=$PROJECT
 # scoped to the one dataset -- not project-wide bigquery.dataEditor.
 gcloud projects add-iam-policy-binding $PROJECT \
   --member="serviceAccount:$SA" --role="roles/bigquery.jobUser"
-# Dataset-level WRITER is granted via the BigQuery API; see pipeline/bootstrap notes.
+# Dataset-level WRITER, after `python -m pipeline.bootstrap` has created the dataset.
+# bq has no one-liner for dataset ACLs: dump the dataset, append
+#   {"role": "WRITER", "userByEmail": "<the SA email>"}
+# to its "access" array, and push it back.
+bq show --format=prettyjson $PROJECT:usgs_pipeline > dataset.json
+bq update --source dataset.json $PROJECT:usgs_pipeline
 
 gcloud iam workload-identity-pools create github-pool \
   --project=$PROJECT --location=global
@@ -74,12 +79,12 @@ Verify 1 and 2 yourself:
 
 ```bash
 gcloud iam workload-identity-pools providers describe github-provider \
-  --project=cs393-496021 --location=global --workload-identity-pool=github-pool \
+  --project=cs452-508317 --location=global --workload-identity-pool=github-pool \
   --format="value(attributeCondition)"
 
 gcloud iam service-accounts get-iam-policy \
-  usgs-pipeline-ingest@cs393-496021.iam.gserviceaccount.com \
-  --project=cs393-496021 --format="value(bindings.members)"
+  usgs-pipeline-ingest@cs452-508317.iam.gserviceaccount.com \
+  --project=cs452-508317 --format="value(bindings.members)"
 ```
 
 **Contrast this with the service-account-key approach.** Had we put a JSON key in
@@ -95,11 +100,11 @@ too.**
 
 | Variable | Value |
 |---|---|
-| `GCP_PROJECT` | `cs393-496021` |
+| `GCP_PROJECT` | `cs452-508317` |
 | `BQ_DATASET` | `usgs_pipeline` |
 | `BQ_LOCATION` | `US` |
-| `WIF_PROVIDER` | `projects/620970916253/.../providers/github-provider` |
-| `WIF_SERVICE_ACCOUNT` | `usgs-pipeline-ingest@cs393-496021.iam.gserviceaccount.com` |
+| `WIF_PROVIDER` | `projects/168005390822/.../providers/github-provider` |
+| `WIF_SERVICE_ACCOUNT` | `usgs-pipeline-ingest@cs452-508317.iam.gserviceaccount.com` |
 
 These are **variables**, not secrets, deliberately. None of them grants access — the
 provider path and service account email are just names, and the security boundary is the

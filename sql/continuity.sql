@@ -21,7 +21,7 @@ WITH runs AS (
     rows_updated,
     error_message,
     LAG(started_at) OVER (ORDER BY started_at) AS previous_started_at
-  FROM `cs393-496021.usgs_pipeline.ingest_runs`
+  FROM `cs452-508317.usgs_pipeline.ingest_runs`
   WHERE started_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 8 DAY)
 )
 SELECT
@@ -56,7 +56,7 @@ SELECT
   SUM(rows_inserted)                      AS events_inserted,
   SUM(rows_updated)                       AS events_revised,
   ROUND(AVG(duration_ms) / 1000, 1)       AS avg_seconds
-FROM `cs393-496021.usgs_pipeline.ingest_runs`
+FROM `cs452-508317.usgs_pipeline.ingest_runs`
 WHERE started_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 8 DAY)
 GROUP BY day
 ORDER BY day DESC;
@@ -67,7 +67,7 @@ ORDER BY day DESC;
 --    straight to the Actions log for that run.
 -- ---------------------------------------------------------------------------
 SELECT started_at, mode, error_message, runner_url
-FROM `cs393-496021.usgs_pipeline.ingest_runs`
+FROM `cs452-508317.usgs_pipeline.ingest_runs`
 WHERE status = 'error'
 ORDER BY started_at DESC
 LIMIT 50;
@@ -90,7 +90,7 @@ SELECT
   TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(started_at), MINUTE)  AS minutes_since_last,
   SUM(rows_inserted)                                            AS events_inserted,
   SUM(rows_updated)                                             AS events_revised
-FROM `cs393-496021.usgs_pipeline.ingest_runs`
+FROM `cs452-508317.usgs_pipeline.ingest_runs`
 WHERE started_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 8 DAY)
 GROUP BY trigger
 ORDER BY runs DESC;

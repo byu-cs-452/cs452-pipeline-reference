@@ -7,7 +7,7 @@
 #   bash deploy/deploy_cloud_run.sh
 set -euo pipefail
 
-PROJECT="${GCP_PROJECT:-cs393-496021}"
+PROJECT="${GCP_PROJECT:-cs452-508317}"
 REGION="${CLOUD_RUN_REGION:-us-central1}"
 DATASET="${BQ_DATASET:-usgs_pipeline}"
 JOB="usgs-ingest"

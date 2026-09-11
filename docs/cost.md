@@ -3,7 +3,7 @@
 **Actual spend: $0.00.**
 
 Verified in the [GCP billing console](https://console.cloud.google.com/billing) for
-project `cs393-496021` and the GitHub Actions usage page. Everything below sits inside a
+project `cs452-508317` and the GitHub Actions usage page. Everything below sits inside a
 permanent free tier — not a trial, not credits.
 
 ## Breakdown

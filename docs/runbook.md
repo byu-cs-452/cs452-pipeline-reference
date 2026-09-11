@@ -117,10 +117,22 @@ the next one must not MERGE simultaneously.
 
 ## Teardown
 
-When the follow-up assignment is done, in this order:
+The pipeline lives in its own project, `cs452-508317`, so if that project holds nothing
+else the whole teardown is one command — every resource, grant and leftover bucket goes
+with it:
 
 ```bash
-P=cs393-496021; R=us-central1
+gh workflow disable ingest --repo byu-cs-452/cs452-pipeline-reference
+gh workflow disable healthcheck --repo byu-cs-452/cs452-pipeline-reference
+gcloud projects delete cs452-508317
+```
+
+That is the argument for a dedicated project. In a shared one you have to remove each
+piece by hand, in this order:
+
+```bash
+P=cs452-508317; R=us-central1
+SA=usgs-pipeline-ingest@$P.iam.gserviceaccount.com
 
 # 1. Stop BOTH schedules first, so nothing writes to a half-deleted dataset.
 #    Missing either one leaves a job failing every 15 minutes forever.
@@ -128,17 +140,31 @@ gh workflow disable ingest --repo byu-cs-452/cs452-pipeline-reference
 gh workflow disable healthcheck --repo byu-cs-452/cs452-pipeline-reference
 gcloud scheduler jobs delete usgs-ingest-every-15m --project=$P --location=$R --quiet
 
-# 2. Remove the compute.
+# 2. Remove the compute. `gcloud run jobs deploy --source` silently creates the
+#    registry repo AND a source bucket; both names are generic, so check nothing
+#    else in the project deploys from source before deleting them.
 gcloud run jobs delete usgs-ingest --project=$P --region=$R --quiet
 gcloud artifacts repositories delete cloud-run-source-deploy --project=$P --location=$R --quiet
+gcloud storage rm --recursive gs://run-sources-$P-$R
 
-# 3. Drop the data.
+# 3. Drop the data (the dataset-level WRITER grant goes with it).
 gcloud alpha bq datasets delete usgs_pipeline --project=$P --remove-tables
 
-# 4. Remove the identity plumbing.
-gcloud iam service-accounts delete usgs-pipeline-ingest@$P.iam.gserviceaccount.com --project=$P
-gcloud iam workload-identity-pools delete github-pool --project=$P --location=global
+# 4. Remove the identity plumbing. Strip the project-level role BEFORE deleting the
+#    service account, or it lingers as an orphaned `deleted:serviceAccount:` binding.
+gcloud projects remove-iam-policy-binding $P --member="serviceAccount:$SA" \
+  --role=roles/bigquery.jobUser --condition=None
+gcloud iam service-accounts delete $SA --project=$P --quiet
+gcloud iam workload-identity-pools delete github-pool --project=$P --location=global --quiet
+
+# 5. Remove the GitHub repository variables that point at the project.
+for v in GCP_PROJECT BQ_DATASET BQ_LOCATION WIF_PROVIDER WIF_SERVICE_ACCOUNT; do
+  gh variable delete $v --repo byu-cs-452/cs452-pipeline-reference
+done
 ```
+
+Leave the APIs enabled. Disabling Cloud Run or Cloud Build in a shared project breaks
+whatever else uses them.
 
 Verify nothing is still running afterwards:
 

@@ -7,7 +7,7 @@ no useful API for building reports), so it's written out here.
 
 1. Go to [lookerstudio.google.com](https://lookerstudio.google.com) → **Create** →
    **Data source** → **BigQuery**.
-2. Pick `cs393-496021` → `usgs_pipeline` → `events`. **Connect.**
+2. Pick `cs452-508317` → `usgs_pipeline` → `events`. **Connect.**
 3. Set `ingested_at` and `event_time` to type **Date & Time → Date Hour Minute**.
    Looker Studio defaults timestamps to plain Date, which flattens the whole liveness
    story into daily buckets.

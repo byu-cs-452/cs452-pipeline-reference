@@ -13,7 +13,7 @@ SELECT
   source,
   COUNT(*)                           AS events_written,
   ROUND(MAX(mag), 1)                 AS biggest_mag
-FROM `cs393-496021.usgs_pipeline.events`
+FROM `cs452-508317.usgs_pipeline.events`
 WHERE ingested_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 3 DAY)
 GROUP BY ingest_hour, source
 ORDER BY ingest_hour DESC, source;
@@ -28,7 +28,7 @@ SELECT
   MAX(event_time)                                                     AS newest_quake,
   TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(event_time), MINUTE)        AS minutes_behind_reality,
   COUNT(*)                                                            AS total_events
-FROM `cs393-496021.usgs_pipeline.events`;
+FROM `cs452-508317.usgs_pipeline.events`;
 
 
 -- ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ SELECT
   status,
   ingested_at,
   TIMESTAMP_DIFF(ingested_at, event_time, MINUTE) AS pickup_lag_minutes
-FROM `cs393-496021.usgs_pipeline.events`
+FROM `cs452-508317.usgs_pipeline.events`
 WHERE event_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 DAY)
 ORDER BY event_time DESC
 LIMIT 10;
