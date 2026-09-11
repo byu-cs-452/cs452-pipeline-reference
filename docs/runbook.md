@@ -27,12 +27,16 @@ Three checks, in order of how much they tell you:
 keepalive commit. *This is the single most likely cause of a quietly dead pipeline
 after a semester break.*
 
-### GitHub's scheduled workflow never fires
-**Symptom:** no scheduled runs at all, no failures, nothing in `ingest_runs` with a
-`github-schedule` trigger. Manual `workflow_dispatch` runs work fine.
-**Why:** GitHub schedules are best-effort. Observed during this build: a `*/15` cron on
-an active workflow produced **zero** runs in over an hour. Worse at the top of the hour
-and for newly-created schedules.
+### GitHub's scheduled workflow fires rarely, or not for hours
+**Symptom:** few or no scheduled runs, no failures, little or nothing in `ingest_runs`
+with a `github-schedule` trigger. Manual `workflow_dispatch` runs work fine.
+**Why:** GitHub schedules are best-effort, and "best effort" is doing a lot of work in
+that sentence. Measured during this build: a 15-minute cron on an active workflow
+produced **zero** runs for the first 4h35m, then **2 runs over the next 4.5 hours**
+against ~36 expected. Over the same window Cloud Scheduler delivered 37 of ~36 with zero
+errors. Delays cluster at the top of the hour and are worst for newly-created schedules.
+**Do not confuse this with a dead pipeline.** Every GitHub run that *did* execute was
+correct. The scheduler is unreliable; the job is not.
 **Detect:** `SELECT trigger, COUNT(*) FROM ingest_runs WHERE started_at > ...
 GROUP BY trigger` -- if `cloud-run-scheduler` rows are arriving and
 `github-schedule` rows are not, GitHub is the problem, not the pipeline.
