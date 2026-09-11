@@ -4,7 +4,7 @@ A worked example of the [Build a Pipeline](../pipeline/build_a_pipeline.md) assi
 schema-consistent tier. Bulk-loads ~50 years of the USGS earthquake catalog, then keeps
 itself current every 15 minutes with nobody pushing the button.
 
-**Stack:** USGS FDSN + live GeoJSON feed → GitHub Actions (cron) → BigQuery → Looker Studio
+**Stack:** USGS FDSN + live GeoJSON feed → Cloud Scheduler/Cloud Run **and** GitHub Actions → BigQuery → Looker Studio
 
 ---
 
@@ -24,14 +24,14 @@ flowchart LR
     end
 
     subgraph run["Stage 2 — Ingestion compute (two schedulers, one job)"]
-        GHA["GitHub Actions<br/><i>cron */15, WIF/OIDC</i>"]
-        SCHED["Cloud Scheduler<br/><i>cron */15</i>"]
+        GHA["GitHub Actions<br/><i>cron :00/:15/:30/:45, WIF/OIDC</i>"]
+        SCHED["Cloud Scheduler<br/><i>cron :07/:22/:37/:52</i>"]
         CR["Cloud Run job<br/><i>runs as service account</i>"]
         ING["pipeline.ingest<br/><i>feed or backfill</i>"]
     end
 
     subgraph store["Stage 4 — Analytical store"]
-        STG[("events_staging<br/><i>truncate each run</i>")]
+        STG[("events_staging_&lt;run_id&gt;<br/><i>one per run, 1h expiry</i>")]
         EV[("events<br/><i>partitioned + clustered</i>")]
         RUNS[("ingest_runs<br/><i>continuity ledger</i>")]
     end
@@ -73,7 +73,7 @@ Not estimates — these are what the build actually produced.
 | Seed/trickle seam | seed ends `09-10 23:51`, feed picks up `09-11 00:00` — no gap, no overlap |
 | Revision handling | a live run recorded **9 inserted, 6 updated** — USGS revised 6 events within 30 min |
 | Unattended operation | Cloud Scheduler run at `15:10:19`, **0 inserted / 2 updated**, nobody present |
-| Scheduler reliability | GitHub: **0 runs in the first hour**. Cloud Scheduler: fired first attempt, ~8.5s/run |
+| Scheduler reliability | over ~9h: Cloud Scheduler **37 runs, 0 errors**; GitHub **2 scheduled runs of ~36 expected** |
 | Cost | **$0.00** |
 
 The seam is the part worth looking at. The gap-bridging run fetched 264 events from the
@@ -141,18 +141,36 @@ is real.
 
 #### The finding that changed the design
 
-**GitHub's scheduler never fired.** The workflow was pushed at 14:00 UTC with a
-`*/15` cron and was `active`, with Actions enabled at both repo and org level. Slots at
-14:00, 14:15, 14:30, 14:45, 15:00 all passed with **zero** scheduled runs — over an hour.
-Manual `workflow_dispatch` runs worked perfectly every time, so the code, the auth, and
-the permissions were all fine. GitHub simply had not started honoring the schedule.
+**GitHub's scheduler is real, but wildly unreliable at this cadence.** The workflow was
+pushed at 14:00 UTC with a 15-minute cron and was `active`, with Actions enabled at repo
+and org level. Manual `workflow_dispatch` runs worked perfectly every time, so the code,
+auth and permissions were never in question.
 
-This is documented behavior, just more extreme than expected: GitHub states that
-scheduled workflows "can be delayed during periods of high load," that delays are worse
-at the top of the hour, and that newly-created schedules take time to register.
+Measured over the following ~9 hours:
 
-Cloud Scheduler, deployed as a fallback, fired correctly **on its first attempt** and has
-been reliable since, at ~8.5s per run.
+| Scheduler | Expected runs | Actual | Errors |
+|---|---|---|---|
+| Cloud Scheduler → Cloud Run | ~36 | **37** | 0 |
+| GitHub Actions cron | ~36 | **2** | 0 |
+
+The **first** GitHub scheduled run did not land until **18:34 UTC — 4h35m after the
+workflow was pushed**. Two fired in total (18:34, 21:20). Cloud Scheduler, deployed as a
+fallback, fired correctly on its first attempt and hit its cadence essentially perfectly.
+
+This is documented behavior taken to its limit: GitHub states scheduled workflows "can be
+delayed during periods of high load," that delays cluster at the top of the hour, and
+that newly-created schedules take time to register. What's worth noting is the *size* of
+the gap — not "a few minutes late" but roughly 6% of expected runs.
+
+The lesson is not "GitHub Actions is bad" — it's free, version-controlled, genuinely
+convenient, and every run it did execute was correct. The lesson is that **"scheduled"
+means different things at different reliability tiers**. If your requirement is *"this
+must have run within the last 15 minutes,"* a best-effort scheduler does not meet it no
+matter what the cron expression says. Read the guarantee, not the syntax.
+
+And note what saved the data regardless: because every run re-reads a 24-hour window,
+GitHub firing twice in nine hours cost **nothing**. A pipeline designed around an
+unreliable schedule tolerates an unreliable scheduler.
 
 The lesson is not "GitHub Actions is bad" — it's free, version-controlled, and genuinely
 convenient. The lesson is that **"scheduled" means different things at different
