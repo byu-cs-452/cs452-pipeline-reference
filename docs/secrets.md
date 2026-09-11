@@ -54,6 +54,43 @@ gcloud iam service-accounts add-iam-policy-binding $SA --project=$PROJECT \
 > internet can present a valid token from that issuer. The condition plus the
 > repo-scoped principalSet are the two things doing the actual security work.
 
+### This repo is public. Why that is still safe
+
+Worth spelling out, because "public repo + cloud credentials" is where this setup most
+often goes wrong. Three independent things have to hold, and all three were verified:
+
+1. **The provider rejects other owners.** `assertion.repository_owner == 'byu-cs-452'`.
+   Fork this repo to your own account, and the token your fork presents fails the
+   condition at Google's STS before any service account is involved.
+2. **The binding names one repository.** Impersonation is granted only to
+   `principalSet://.../attribute.repository/byu-cs-452/cs452-pipeline-reference`. Even
+   another repo *inside* this org cannot assume the identity.
+3. **Forks cannot trigger the workflow at all.** It fires on `schedule` and
+   `workflow_dispatch` only. There is no `pull_request` trigger, so a malicious PR has
+   no path to execution — and independently, GitHub withholds `id-token: write` from
+   fork-PR workflows precisely to stop this attack.
+
+Verify 1 and 2 yourself:
+
+```bash
+gcloud iam workload-identity-pools providers describe github-provider \
+  --project=cs393-496021 --location=global --workload-identity-pool=github-pool \
+  --format="value(attributeCondition)"
+
+gcloud iam service-accounts get-iam-policy \
+  usgs-pipeline-ingest@cs393-496021.iam.gserviceaccount.com \
+  --project=cs393-496021 --format="value(bindings.members)"
+```
+
+**Contrast this with the service-account-key approach.** Had we put a JSON key in
+`secrets.GCP_SA_KEY`, going public would be survivable but far more fragile: secrets are
+withheld from fork PRs, but one workflow change adding a `pull_request` trigger, or one
+`echo` of the wrong variable, exfiltrates a permanent credential. With WIF the worst case
+is a one-hour token scoped to one dataset — and an attacker cannot obtain even that
+without commit access to this specific repository. **Going public is a decision you make
+about the code; with a stored key it silently becomes a decision about the credential
+too.**
+
 ### Repository variables (not secrets)
 
 | Variable | Value |
