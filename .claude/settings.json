@@ -1,0 +1,5 @@
+{
+  "env": {
+    "CLOUDSDK_CORE_PROJECT": "cs452-508317"
+  }
+}
