@@ -4,9 +4,24 @@
 -- ---------------------------------------------------------------------------
 -- events: one row per earthquake, the current best revision of it.
 --
--- PARTITION BY DATE(event_time): every analytical query in sql/ filters or
---   groups by event time, and the MERGE prunes to the handful of partitions the
---   incoming batch touches instead of rewriting a 4M-row table.
+-- PARTITION BY TIMESTAMP_TRUNC(event_time, MONTH): every analytical query in
+--   sql/ filters or groups by event time, and the MERGE prunes to the one or two
+--   partitions the incoming batch touches instead of rewriting a 4.8M-row table.
+--
+--   MONTH, not DAY, and this is a capacity decision rather than a taste one.
+--   The seed spans 1970 to now -- about 20,700 days. Two hard BigQuery limits
+--   make daily partitioning impossible at that span:
+--     * 10,000 partitions per partitioned table (20,700 needed -- over by 2x)
+--     * 4,000 partitions modified by a single DML statement, so even one big
+--       seed MERGE fails: "Too many partitions produced by query, allowed 4000"
+--   Monthly gives ~680 partitions for the same 57 years, comfortably under both.
+--   Pruning barely suffers: the live job's 24-hour window still touches one or
+--   two partitions, and a recent monthly partition is only ~18k rows.
+--
+--   The general rule worth taking away: partition granularity is set by your
+--   data's total time span, not only by your query pattern. Daily partitioning
+--   is right for two years of data and impossible for fifty.
+--
 -- CLUSTER BY id: the hot path is a point-lookup MERGE on id, 96 times a day.
 --   High-cardinality string clustering is exactly the case clustering is for.
 -- ---------------------------------------------------------------------------
@@ -38,7 +53,7 @@ CREATE TABLE IF NOT EXISTS `{dataset}.events`
   source      STRING             OPTIONS(description="How this row arrived: 'seed' (bulk history), 'feed' (live poll), or 'backfill' (gap repair). Lets us prove the trickle is real and not just the seed."),
   ingested_at TIMESTAMP NOT NULL OPTIONS(description="When OUR pipeline wrote this row. The liveness proof lives in this column.")
 )
-PARTITION BY DATE(event_time)
+PARTITION BY TIMESTAMP_TRUNC(event_time, MONTH)
 CLUSTER BY id
 OPTIONS(description="USGS earthquake catalog. Seeded from FDSN history, kept current by a 15-minute GitHub Actions job.");
 

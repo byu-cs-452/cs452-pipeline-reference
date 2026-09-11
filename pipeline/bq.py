@@ -183,15 +183,15 @@ def merge_staging_into_events(bq):
             SELECT
               COUNTIF(T.id IS NULL)                               AS to_insert,
               COUNTIF(T.id IS NOT NULL AND S.updated > T.updated) AS to_update,
-              MIN(DATE(S.event_time))                             AS min_day,
-              MAX(DATE(S.event_time))                             AS max_day
+              MIN(S.event_time)                                   AS min_time,
+              MAX(S.event_time)                                   AS max_time
             FROM `{staging}` AS S
             LEFT JOIN `{events}` AS T USING (id)
             """
         ).result()
     )[0]
 
-    if probe.min_day is None:
+    if probe.min_time is None:
         log.info("staging is empty, nothing to merge")
         return 0, 0
 
@@ -199,18 +199,18 @@ def merge_staging_into_events(bq):
         MERGE `{events}` AS T
         USING `{staging}` AS S
         ON T.id = S.id
-           -- Partition pruning: only touch the days this batch covers, padded by
-           -- a day on each side.
+           -- Partition pruning: only touch the span this batch covers, padded by
+           -- a day on each side. The filter is on event_time itself, which is the
+           -- column the table is partitioned on -- wrapping it in DATE() would
+           -- hide it from the pruner and scan everything.
            --
            -- The padding is not cosmetic. A predicate in the ON clause that
            -- wrongly excludes an existing row does not just skip the update --
            -- the row falls through to NOT MATCHED and gets INSERTED, duplicating
            -- the id. BigQuery enforces no primary key, so nothing would stop it.
            -- A relocated event's origin time can shift by a second or two, which
-           -- is enough to cross midnight into an unscanned partition. One day of
-           -- slack costs two extra partitions out of ~20,000 and removes the
-           -- failure mode entirely.
-           AND DATE(T.event_time) BETWEEN @min_day AND @max_day
+           -- near a month boundary is enough to land in an unscanned partition.
+           AND T.event_time >= @window_start AND T.event_time <= @window_end
         WHEN MATCHED AND S.updated > T.updated THEN UPDATE SET
           event_time = S.event_time, updated = S.updated, mag = S.mag,
           mag_type = S.mag_type, place = S.place, latitude = S.latitude,
@@ -225,10 +225,10 @@ def merge_staging_into_events(bq):
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter(
-                "min_day", "DATE", probe.min_day - dt.timedelta(days=1)
+                "window_start", "TIMESTAMP", probe.min_time - dt.timedelta(days=1)
             ),
             bigquery.ScalarQueryParameter(
-                "max_day", "DATE", probe.max_day + dt.timedelta(days=1)
+                "window_end", "TIMESTAMP", probe.max_time + dt.timedelta(days=1)
             ),
         ]
     )

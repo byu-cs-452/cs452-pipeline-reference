@@ -10,7 +10,7 @@ permanent free tier — not a trial, not credits.
 
 | Resource | Usage | Free allowance | Cost |
 |---|---|---|---|
-| BigQuery storage | ~1.2 GB (4M rows, active) | 10 GB/month | $0 |
+| BigQuery storage | 1.118 GB (4.84M rows, active) | 10 GB/month | $0 |
 | BigQuery queries | ~2 GB/month scanned | 1 TB/month | $0 |
 | BigQuery load jobs | ~96/day + ~10 seed | unlimited, free | $0 |
 | BigQuery streaming inserts | **none — deliberately** | n/a (billed from row 1) | $0 |
@@ -31,8 +31,8 @@ one-line difference is the entire bill.
 
 ### Why partition pruning matters more than the number suggests
 
-The MERGE runs 96 times a day against a 4M-row table. Without the partition predicate
-each one would scan all ~20,000 partitions:
+The MERGE runs 96 times a day against a 4.8M-row table. Without the partition predicate
+each one would scan all 681 partitions:
 
 - **With pruning:** ~5 MB scanned per run → ~15 GB/month → free.
 - **Without pruning:** ~1.2 GB per run → ~3.5 TB/month → ~2.5 TB over the free tier ≈
@@ -62,9 +62,9 @@ won't run is a much better teacher than an invoice. The 60-day table expiry is t
 
 Done before committing to a scope, which is the point of the exercise:
 
-- ~4M events × ~24 columns, mostly nullable floats and short strings
-- ≈ 300 bytes/row uncompressed → **~1.2 GB in BigQuery**
-- ≈ 55 bytes/row as zstd parquet → **~230 MB on local disk**
+- ~4.84M events × ~24 columns, mostly nullable floats and short strings
+- ≈ 230 bytes/row uncompressed → **1.118 GB in BigQuery** (measured, not estimated)
+- ≈ 58 bytes/row as zstd parquet → **270 MB on local disk** across 389 chunks
 - Growth: ~600 new events/day ≈ 0.2 MB/day ≈ **65 MB/year**
 
 Comfortably inside 10 GB, with decades of headroom. Had this been the Citi Bike

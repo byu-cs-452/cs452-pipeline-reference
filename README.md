@@ -126,13 +126,30 @@ USGS does, so the overlap window is our buffer.
 
 ### Stage 4 — BigQuery
 
-`events` is `PARTITION BY DATE(event_time)` and `CLUSTER BY id`:
+`events` is `PARTITION BY TIMESTAMP_TRUNC(event_time, MONTH)` and `CLUSTER BY id`:
 
 - **Partitioning** because every analytical query filters on event time, and — more
-  importantly — the MERGE can prune to the two or three partitions the batch touches
-  instead of rewriting a 4M-row table 96 times a day.
+  importantly — the MERGE can prune to the one or two partitions the batch touches
+  instead of rewriting a 4.8M-row table 96 times a day.
 - **Clustering on `id`** because the hot path is a point-lookup MERGE on exactly that
   column. High-cardinality string, looked up constantly: the textbook clustering case.
+
+> **Monthly, not daily — and we found out the hard way.** The first version partitioned
+> by `DATE(event_time)`, which is the obvious choice and is wrong here. The seed spans
+> 1970 to now: ~20,700 days. The seed MERGE failed with
+> `Too many partitions produced by query, allowed 4000, query produces at least 4001`,
+> and 20,700 daily partitions would also have blown past BigQuery's 10,000-per-table
+> limit. Monthly gives ~680 partitions for the same 57 years.
+>
+> Pruning barely suffers: the live job's 24-hour window still touches one or two
+> partitions, and a recent monthly partition is only ~18k rows. **The general rule:
+> partition granularity is set by your data's total time span, not just by your query
+> pattern.** Daily partitioning is right for two years of data and impossible for fifty.
+>
+> One corollary in the code: the MERGE predicate filters on `event_time` directly, not
+> `DATE(event_time)`. Wrapping a partition column in a function hides it from the pruner
+> and quietly scans the whole table — the query still returns the right answer, so
+> nothing fails and you just pay for it forever.
 
 ### Stage 5 — Looker Studio
 

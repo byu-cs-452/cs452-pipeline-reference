@@ -186,6 +186,13 @@ def verify(client):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skip-consolidate", action="store_true", help="Reuse data/staged/.")
+    parser.add_argument(
+        "--skip-load",
+        action="store_true",
+        help="Reuse the existing scratch table and go straight to the MERGE. Use "
+        "this after a MERGE fails -- the upload already succeeded and re-sending "
+        "270 MB to prove it again helps nobody.",
+    )
     parser.add_argument("--keep-raw-table", action="store_true", help="Leave the scratch table.")
     args = parser.parse_args()
 
@@ -196,13 +203,17 @@ def main():
     started_at = dt.datetime.now(dt.timezone.utc)
     client = bq.client()
 
-    if args.skip_consolidate:
-        staged = sorted(STAGED_DIR.glob("*.parquet"))
-        log.info("reusing %d staged files", len(staged))
+    if args.skip_load:
+        target = config.table(SEED_RAW_TABLE)
+        fetched = list(client.query(f"SELECT COUNT(*) AS n FROM `{target}`").result())[0].n
+        log.info("reusing existing %s (%d rows)", SEED_RAW_TABLE, fetched)
     else:
-        staged = consolidate()
-
-    fetched = load_to_raw_table(client, staged)
+        if args.skip_consolidate:
+            staged = sorted(STAGED_DIR.glob("*.parquet"))
+            log.info("reusing %d staged files", len(staged))
+        else:
+            staged = consolidate()
+        fetched = load_to_raw_table(client, staged)
     affected = merge_into_events(client)
     ok = verify(client)
 
