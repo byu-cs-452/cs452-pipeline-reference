@@ -16,6 +16,10 @@ permanent free tier — not a trial, not credits.
 | BigQuery streaming inserts | **none — deliberately** | n/a (billed from row 1) | $0 |
 | GitHub Actions | ~96 runs/day × ~30s ≈ 50 min/day | unlimited (public) / 2,000 min/mo (private) | $0 |
 | USGS FDSN + feeds | ~100 seed requests, 96 feed polls/day | free public service | $0 |
+| Cloud Run job | ~96 executions/day × ~9s, 512 MiB | 180k vCPU-s + 360k GiB-s/month | $0 |
+| Cloud Scheduler | 1 job | 3 jobs/month free | $0 |
+| Artifact Registry | 1 image, ~250 MB | 0.5 GB/month free | $0 |
+| Cloud Build | ~1 build | 2,500 build-min/month free | $0 |
 | Cloud Storage | none — parquet stays local, loads go direct | n/a | $0 |
 | Workload Identity Federation | ~96 token exchanges/day | free | $0 |
 

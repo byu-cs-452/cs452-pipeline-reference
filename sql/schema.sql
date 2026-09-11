@@ -55,45 +55,7 @@ CREATE TABLE IF NOT EXISTS `{dataset}.events`
 )
 PARTITION BY TIMESTAMP_TRUNC(event_time, MONTH)
 CLUSTER BY id
-OPTIONS(description="USGS earthquake catalog. Seeded from FDSN history, kept current by a 15-minute GitHub Actions job.");
-
-
--- ---------------------------------------------------------------------------
--- events_staging: landing zone for one ingest run.
---
--- Every run truncates and rewrites this. Loading here first, then MERGEing, is
--- what makes a run atomic from the reader's point of view -- `events` is never
--- half-updated. Unpartitioned because it holds at most a few thousand rows.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `{dataset}.events_staging`
-(
-  id          STRING    NOT NULL,
-  event_time  TIMESTAMP NOT NULL,
-  updated     TIMESTAMP,
-  mag         FLOAT64,
-  mag_type    STRING,
-  place       STRING,
-  latitude    FLOAT64,
-  longitude   FLOAT64,
-  depth_km    FLOAT64,
-  status      STRING,
-  event_type  STRING,
-  net         STRING,
-  tsunami     BOOL,
-  sig         INT64,
-  felt        INT64,
-  cdi         FLOAT64,
-  mmi         FLOAT64,
-  alert       STRING,
-  nst         INT64,
-  dmin        FLOAT64,
-  rms         FLOAT64,
-  gap         FLOAT64,
-  url         STRING,
-  source      STRING,
-  ingested_at TIMESTAMP NOT NULL
-)
-OPTIONS(description="Transient landing table, truncated at the start of every ingest run.");
+OPTIONS(description="USGS earthquake catalog. Seeded from FDSN history, kept current by a 15-minute scheduled job (GitHub Actions and Cloud Scheduler both run it).");
 
 
 -- ---------------------------------------------------------------------------
@@ -106,11 +68,11 @@ OPTIONS(description="Transient landing table, truncated at the start of every in
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `{dataset}.ingest_runs`
 (
-  run_id          STRING    NOT NULL OPTIONS(description="Unique per run; the GitHub Actions run id when scheduled."),
+  run_id          STRING    NOT NULL OPTIONS(description="Unique per run, prefixed by platform: gha-<id>, run-<execution>, or local-<uuid>."),
   started_at      TIMESTAMP NOT NULL,
   finished_at     TIMESTAMP,
   duration_ms     INT64,
-  trigger         STRING             OPTIONS(description="'schedule', 'manual', or 'local'."),
+  trigger         STRING             OPTIONS(description="Which scheduler produced this run: 'github-schedule', 'cloud-run-scheduler', 'github-workflow_dispatch', 'manual', or 'local'. Both schedulers write here, so this is how you tell one going quiet from the pipeline being down."),
   mode            STRING             OPTIONS(description="'feed' for the normal 24h overlap poll, 'backfill' when repairing a detected gap."),
   window_start    TIMESTAMP          OPTIONS(description="Start of the time range this run asked USGS for (backfill mode)."),
   window_end      TIMESTAMP,
@@ -119,7 +81,7 @@ CREATE TABLE IF NOT EXISTS `{dataset}.ingest_runs`
   rows_updated    INT64              OPTIONS(description="Existing events whose revision was newer than ours."),
   status          STRING    NOT NULL OPTIONS(description="'ok', 'no_new_data', or 'error'."),
   error_message   STRING,
-  runner_url      STRING             OPTIONS(description="Link to the GitHub Actions run, for post-mortems.")
+  runner_url      STRING             OPTIONS(description="Deep link to the Actions run or Cloud Run execution, for post-mortems.")
 )
 PARTITION BY DATE(started_at)
 OPTIONS(description="One row per ingest attempt. The continuity ledger.");

@@ -27,16 +27,38 @@ def now():
 
 
 def run_identity():
-    """Where this run came from, so a post-mortem can find the logs."""
+    """Where this run came from, so a post-mortem can find the logs.
+
+    Two schedulers drive this same code -- GitHub Actions and Cloud Run Jobs --
+    and both write to the same table. Recording which one produced a row is what
+    makes the continuity ledger readable when they are both running, and it is
+    how you tell "GitHub stopped firing" apart from "the pipeline is down".
+    """
     gh_run_id = os.environ.get("GITHUB_RUN_ID")
     if gh_run_id:
         server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         repo = os.environ.get("GITHUB_REPOSITORY", "")
         return {
-            "run_id": gh_run_id,
-            "trigger": os.environ.get("GITHUB_EVENT_NAME", "schedule"),
+            "run_id": f"gha-{gh_run_id}",
+            "trigger": f"github-{os.environ.get('GITHUB_EVENT_NAME', 'schedule')}",
             "runner_url": f"{server}/{repo}/actions/runs/{gh_run_id}",
         }
+
+    # Cloud Run Jobs inject these; CLOUD_RUN_EXECUTION is unique per execution.
+    execution = os.environ.get("CLOUD_RUN_EXECUTION")
+    if execution:
+        project = os.environ.get("GCP_PROJECT", "")
+        region = os.environ.get("CLOUD_RUN_REGION", "us-central1")
+        job = os.environ.get("CLOUD_RUN_JOB", "")
+        return {
+            "run_id": f"run-{execution}",
+            "trigger": "cloud-run-scheduler",
+            "runner_url": (
+                f"https://console.cloud.google.com/run/jobs/details/"
+                f"{region}/{job}/executions?project={project}"
+            ),
+        }
+
     return {"run_id": f"local-{uuid.uuid4().hex[:12]}", "trigger": "local", "runner_url": None}
 
 
@@ -138,8 +160,11 @@ def main():
             return
 
         if rows:
-            bq.load_rows_to_staging(bq_client, rows)
-            inserted, updated = bq.merge_staging_into_events(bq_client)
+            staging = bq.load_rows_to_staging(bq_client, rows, identity["run_id"])
+            try:
+                inserted, updated = bq.merge_staging_into_events(bq_client, staging)
+            finally:
+                bq.drop_staging(bq_client, staging)
             record["rows_inserted"] = inserted
             record["rows_updated"] = updated
             record["status"] = "ok" if (inserted or updated) else "no_new_data"

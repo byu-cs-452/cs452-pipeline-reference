@@ -41,7 +41,7 @@ def test_column_order_matches_schema():
 def test_schema_sql_lists_same_columns():
     """sql/schema.sql is the third definition of the column list. Keep it honest."""
     ddl = (Path(__file__).resolve().parent.parent / "sql" / "schema.sql").read_text()
-    events_ddl = ddl.split("CREATE TABLE IF NOT EXISTS `{dataset}.events_staging`")[0]
+    events_ddl = ddl.split("CREATE TABLE IF NOT EXISTS `{dataset}.ingest_runs`")[0]
     for column in usgs.COLUMNS:
         assert f"  {column} " in events_ddl or f"  {column:<11}" in events_ddl, column
 

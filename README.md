@@ -23,8 +23,10 @@ flowchart LR
         LD["load_seed.py<br/><i>consolidate → load → MERGE</i>"]
     end
 
-    subgraph run["Stage 2 — Ingestion compute"]
-        GHA["GitHub Actions<br/><i>cron */15, OIDC auth</i>"]
+    subgraph run["Stage 2 — Ingestion compute (two schedulers, one job)"]
+        GHA["GitHub Actions<br/><i>cron */15, WIF/OIDC</i>"]
+        SCHED["Cloud Scheduler<br/><i>cron */15</i>"]
+        CR["Cloud Run job<br/><i>runs as service account</i>"]
         ING["pipeline.ingest<br/><i>feed or backfill</i>"]
     end
 
@@ -41,7 +43,9 @@ flowchart LR
     FDSN --> DL --> PQ --> LD --> EV
     LIVE --> ING
     FDSN -.->|gap backfill| ING
-    GHA --> ING --> STG -->|MERGE on id<br/>where updated is newer| EV
+    GHA --> ING
+    SCHED --> CR --> ING
+    ING --> STG -->|MERGE on id<br/>where updated is newer| EV
     ING --> RUNS
     EV --> LS
     RUNS --> LS
@@ -110,20 +114,72 @@ Picked for three properties the other sources don't combine as well:
   stale magnitudes. You need MERGE-on-newer-revision.
 - **No API key**, so the free service stays free without a signup funnel.
 
-### Stage 2 — GitHub Actions cron, every 15 minutes
+### Stage 2 — two schedulers, one ingest job
 
-The wildcard option, chosen over Cloud Scheduler + Cloud Run on purpose:
+Both the wildcard option (GitHub Actions) and the Google option (Cloud Scheduler → Cloud
+Run job) are wired up, running the same `pipeline.ingest` module on the same 15-minute
+cadence, writing to the same table. That was not the original plan — see
+[the empirical finding](#the-finding-that-changed-the-design) — but it turned out to be
+the more instructive build.
 
-- **It runs when the laptop is closed.** For an assignment explicitly graded on still
-  being alive a week later, that is the whole ballgame.
-- **The schedule is version-controlled.** The cadence lives in a reviewable file, not
-  in console state somebody has to remember to screenshot.
-- **Free, and no credit card.** Public repos get unlimited minutes; private repos get
-  2,000/month, and ~96 runs/day × ~30s is roughly 50 minutes/day. Comfortable.
+**Running two schedulers against one table is only sane because the pipeline is
+idempotent.** Both fetch the same 24-hour window; whichever arrives second finds the
+rows already present and its MERGE is a no-op. If idempotency were merely decorative,
+this would double every row. It's the strongest possible demonstration that the property
+is real.
 
-Cost: GitHub's scheduler is best-effort. A `*/15` cron does not fire exactly on the
-quarter hour, and under load it can slip 10+ minutes. The design absorbs that rather
-than fighting it (see the overlap window below).
+#### Why GitHub Actions was the first choice
+
+- **It runs when the laptop is closed.** For an assignment graded on still being alive a
+  week later, that is the whole ballgame.
+- **The schedule is version-controlled.** The cadence lives in a reviewable file, not in
+  console state somebody has to remember to screenshot.
+- **Free, and no credit card.** Public repos get unlimited minutes.
+
+#### The finding that changed the design
+
+**GitHub's scheduler never fired.** The workflow was pushed at 14:00 UTC with a
+`*/15` cron and was `active`, with Actions enabled at both repo and org level. Slots at
+14:00, 14:15, 14:30, 14:45, 15:00 all passed with **zero** scheduled runs — over an hour.
+Manual `workflow_dispatch` runs worked perfectly every time, so the code, the auth, and
+the permissions were all fine. GitHub simply had not started honoring the schedule.
+
+This is documented behavior, just more extreme than expected: GitHub states that
+scheduled workflows "can be delayed during periods of high load," that delays are worse
+at the top of the hour, and that newly-created schedules take time to register.
+
+Cloud Scheduler, deployed as a fallback, fired correctly **on its first attempt** and has
+been reliable since, at ~8.5s per run.
+
+The lesson is not "GitHub Actions is bad" — it's free, version-controlled, and genuinely
+convenient. The lesson is that **"scheduled" means different things at different
+reliability tiers**, and if your requirement is *"this must have run within the last 15
+minutes,"* a best-effort scheduler does not meet it no matter what the cron expression
+says. Read the guarantee, not the syntax.
+
+#### The credential contrast, which is the real lesson
+
+The two paths authenticate completely differently, and the difference is not arbitrary:
+
+- **Cloud Run** simply *runs as* the service account. The metadata server hands it
+  credentials. No keys, no federation, no configuration — about four lines of deploy
+  flags.
+- **GitHub Actions** needs the whole Workload Identity Federation apparatus — a pool, an
+  OIDC provider, an attribute condition, a principalSet binding — to achieve the same
+  thing.
+
+Why the difference? The Cloud Run job is *inside* the trust domain that owns the data.
+The GitHub runner is not. **Credential machinery is a symptom of crossing a trust
+boundary**, and the amount of it you need is proportional to how far you're crossing.
+Same code, same permissions, same table — the only variable is where the compute lives.
+That's worth internalizing before you reach for a service-account key.
+
+#### Cadence notes
+
+15 minutes, not GitHub's 5-minute minimum. Scheduled runs are best-effort on both
+platforms, and a cadence you cannot actually achieve is just a misleading number in a
+config file. The 24-hour overlap window (below) means a missed run costs nothing, so
+there is no reason to push the cadence harder than the scheduler can honor.
 
 **Why the seed uses different compute.** The bulk load runs on a laptop, moves millions
 of rows, and takes minutes. The recurring job runs on a hosted runner, moves hundreds of

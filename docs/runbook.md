@@ -27,6 +27,28 @@ Three checks, in order of how much they tell you:
 keepalive commit. *This is the single most likely cause of a quietly dead pipeline
 after a semester break.*
 
+### GitHub's scheduled workflow never fires
+**Symptom:** no scheduled runs at all, no failures, nothing in `ingest_runs` with a
+`github-schedule` trigger. Manual `workflow_dispatch` runs work fine.
+**Why:** GitHub schedules are best-effort. Observed during this build: a `*/15` cron on
+an active workflow produced **zero** runs in over an hour. Worse at the top of the hour
+and for newly-created schedules.
+**Detect:** `SELECT trigger, COUNT(*) FROM ingest_runs WHERE started_at > ...
+GROUP BY trigger` -- if `cloud-run-scheduler` rows are arriving and
+`github-schedule` rows are not, GitHub is the problem, not the pipeline.
+**Fix:** none available; it is not under your control. This is why Cloud Scheduler runs
+the same job in parallel. If you rely on GitHub alone, budget for it being late or
+absent and make sure your overlap window is wide enough to not care.
+
+### Cloud Scheduler stops triggering
+**Symptom:** no `cloud-run-scheduler` rows.
+**Check:** `gcloud scheduler jobs describe usgs-ingest-every-15m --location us-central1`
+-- confirm `state: ENABLED` and look at `status`. Then check the job's executions:
+`gcloud run jobs executions list --job usgs-ingest --region us-central1`.
+**Common causes:** the service account lost `roles/run.invoker` on the job, the Cloud Run
+job was deleted or redeployed under a different name, or billing was disabled on the
+project.
+
 ### USGS returns 503
 **Symptom:** `status='error'` in `ingest_runs`, `UsgsUnavailable` in `error_message`.
 **Why:** their service overloads, particularly on large queries.

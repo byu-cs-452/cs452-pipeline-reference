@@ -133,10 +133,31 @@ def _split_statements(sql_text):
             yield statement.strip()
 
 
-def load_rows_to_staging(bq, rows):
-    """Truncate-and-load this run's rows into events_staging."""
-    if not rows:
-        return 0
+def staging_table_name(run_id):
+    """A staging table private to one run.
+
+    Originally this was a single shared `events_staging` truncated at the start
+    of every run. That is safe with one scheduler and broken with two: GitHub
+    Actions and Cloud Scheduler both fire on the quarter hour, and if their runs
+    overlap, one WRITE_TRUNCATE wipes the other's rows out from under its MERGE.
+    The victim would not error -- it would merge a partial batch and silently
+    drop events, which is the worst kind of bug.
+
+    Per-run tables remove the shared mutable state entirely. They cost nothing
+    (table operations are free) and carry a 1-hour expiration so a run that dies
+    before cleanup leaves no litter.
+    """
+    safe = "".join(char if char.isalnum() else "_" for char in str(run_id))[:80]
+    return config.table(f"events_staging_{safe}")
+
+
+def load_rows_to_staging(bq, rows, run_id):
+    """Load this run's rows into its own staging table. Returns the table id."""
+    target = staging_table_name(run_id)
+
+    table = bigquery.Table(target, schema=STAGING_SCHEMA)
+    table.expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    bq.create_table(table, exists_ok=True)
 
     payload = [_jsonify(row) for row in rows]
     job_config = bigquery.LoadJobConfig(
@@ -144,13 +165,21 @@ def load_rows_to_staging(bq, rows):
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
         source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
     )
-    job = bq.load_table_from_json(payload, config.table("events_staging"), job_config=job_config)
+    job = bq.load_table_from_json(payload, target, job_config=job_config)
     job.result()
-    log.info("staged %d rows", len(payload))
-    return len(payload)
+    log.info("staged %d rows into %s", len(payload), target.rsplit(".", 1)[-1])
+    return target
 
 
-def merge_staging_into_events(bq):
+def drop_staging(bq, staging):
+    """Best-effort cleanup. The 1-hour expiration is the real backstop."""
+    try:
+        bq.query(f"DROP TABLE IF EXISTS `{staging}`").result()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not drop %s (expires within the hour anyway): %s", staging, exc)
+
+
+def merge_staging_into_events(bq, staging):
     """The idempotency core.
 
     Two things make re-running safe:
@@ -169,7 +198,6 @@ def merge_staging_into_events(bq):
     so the two are counted separately before the MERGE runs.
     """
     events = config.table("events")
-    staging = config.table("events_staging")
 
     # One probe query does double duty: it counts what the MERGE is about to do,
     # and it computes the partition window the MERGE needs. The window has to be

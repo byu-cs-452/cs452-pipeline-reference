@@ -1,15 +1,23 @@
 name: ingest
 
-# Every 15 minutes. GitHub's minimum is 5, but scheduled runs are best-effort
-# and get delayed under load -- during busy hours a */5 schedule in practice
-# fires every 7-10 minutes anyway. 15 is honest about what we actually get, and
-# the 24-hour overlap window means a skipped run costs nothing.
+# On the quarter hour. Cloud Scheduler runs the same job at :07/:22/:37/:52 --
+# deliberately offset, not duplicated by accident.
+#
+# Two reasons for the offset. Writing to BigQuery from two runs at the same
+# instant invites concurrent-DML contention on the same table for no benefit;
+# and interleaving them halves the worst-case staleness, because a miss on one
+# scheduler is covered ~7 minutes later by the other rather than 15.
+#
+# Running both at all is a response to a measured failure: GitHub's scheduler
+# produced zero runs in the first hour after this workflow was added, while
+# Cloud Scheduler fired on its first attempt. See README, "The finding that
+# changed the design".
 #
 # Known failure mode, documented rather than discovered: GitHub disables
 # scheduled workflows in a repo with no commits for 60 days. See docs/runbook.md.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0,15,30,45 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
