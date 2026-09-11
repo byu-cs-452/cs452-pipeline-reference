@@ -1,4 +1,7 @@
-requests>=2.32
-google-cloud-bigquery>=3.25
+# Full local/dev set: the ingest runtime plus the seed-only extras.
+# The Cloud Run image installs requirements-ingest.txt instead -- see Dockerfile.
+-r requirements-ingest.txt
+
+# Seed scripts only (local parquet).
 pyarrow>=17
 tzdata; sys_platform == "win32"

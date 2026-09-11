@@ -1,0 +1,11 @@
+# Runtime dependencies for pipeline.ingest only -- what the Cloud Run container
+# actually needs.
+#
+# Deliberately excludes pyarrow, which is large (~100 MB installed) and used only
+# by the seed scripts for local parquet. Shipping it in the ingest image cost
+# cold-start time on every scheduled run to carry code that never executes.
+#
+# requirements.txt remains the full local/dev set: it installs this plus the
+# seed-only extras.
+requests>=2.32
+google-cloud-bigquery>=3.25

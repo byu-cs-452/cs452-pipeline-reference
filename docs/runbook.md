@@ -40,6 +40,26 @@ GROUP BY trigger` -- if `cloud-run-scheduler` rows are arriving and
 the same job in parallel. If you rely on GitHub alone, budget for it being late or
 absent and make sure your overlap window is wide enough to not care.
 
+### Cloud Run execution starts minutes after the scheduler fires
+**Symptom:** `lastAttemptTime` on the scheduler says 15:22, the `ingest_runs` row says
+15:25. Observed repeatedly during this build, up to ~3 minutes.
+**Why:** Cloud Run job provisioning -- pulling a ~250 MB image onto a cold instance. One
+execution sat in `Waiting for execution to start` with
+`System will retry after 00:05`, then ran normally on retry.
+**Is it a problem?** No, and this is worth being precise about. The pipeline's
+correctness does not depend on *when* a run happens, only that one happens within the
+24-hour overlap window. A 3-minute start delay is invisible in the data. It would matter
+only if you promised freshness tighter than a few minutes -- in which case a Cloud Run
+*service* with a minimum instance, rather than a job, is the right shape.
+**What did NOT fix it:** slimming the image. `pipeline.ingest` never imports pyarrow, so
+the container now installs `requirements-ingest.txt` and drops ~100 MB of unused wheel.
+Measured afterwards: trigger at 15:27:24, execution start at 15:29:46 -- about 2.5
+minutes, essentially unchanged from before. **The delay is queueing and provisioning, not
+image pull.** The slimmer image is still worth keeping (less to build, less to store,
+less to audit), but do not expect it to buy latency. If you genuinely need sub-minute
+starts, the answer is a Cloud Run *service* with `--min-instances=1`, not a job -- and
+that leaves the free tier, so decide whether the freshness requirement is real first.
+
 ### Cloud Scheduler stops triggering
 **Symptom:** no `cloud-run-scheduler` rows.
 **Check:** `gcloud scheduler jobs describe usgs-ingest-every-15m --location us-central1`

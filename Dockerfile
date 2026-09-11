@@ -11,8 +11,11 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Dependencies first so edits to the pipeline code reuse the cached layer.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# requirements-ingest.txt, not requirements.txt: the ingest path never imports
+# pyarrow (only the seed scripts do), and ~100 MB of unused wheel is cold-start
+# latency paid on every scheduled run forever.
+COPY requirements-ingest.txt .
+RUN pip install --no-cache-dir -r requirements-ingest.txt
 
 COPY pipeline/ ./pipeline/
 COPY sql/ ./sql/
