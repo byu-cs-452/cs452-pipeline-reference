@@ -171,17 +171,29 @@ def merge_staging_into_events(bq):
     events = config.table("events")
     staging = config.table("events_staging")
 
-    counts = list(
+    # One probe query does double duty: it counts what the MERGE is about to do,
+    # and it computes the partition window the MERGE needs. The window has to be
+    # resolved here rather than inline, because BigQuery rejects a subquery that
+    # references a table inside a MERGE join predicate:
+    #   "Unsupported subquery with table in join predicate."
+    # So the bounds go in as query parameters, which are plain constants.
+    probe = list(
         bq.query(
             f"""
             SELECT
-              COUNTIF(T.id IS NULL) AS to_insert,
-              COUNTIF(T.id IS NOT NULL AND S.updated > T.updated) AS to_update
+              COUNTIF(T.id IS NULL)                               AS to_insert,
+              COUNTIF(T.id IS NOT NULL AND S.updated > T.updated) AS to_update,
+              MIN(DATE(S.event_time))                             AS min_day,
+              MAX(DATE(S.event_time))                             AS max_day
             FROM `{staging}` AS S
             LEFT JOIN `{events}` AS T USING (id)
             """
         ).result()
     )[0]
+
+    if probe.min_day is None:
+        log.info("staging is empty, nothing to merge")
+        return 0, 0
 
     merge_sql = f"""
         MERGE `{events}` AS T
@@ -198,9 +210,7 @@ def merge_staging_into_events(bq):
            -- is enough to cross midnight into an unscanned partition. One day of
            -- slack costs two extra partitions out of ~20,000 and removes the
            -- failure mode entirely.
-           AND DATE(T.event_time) BETWEEN
-                 (SELECT DATE_SUB(DATE(MIN(event_time)), INTERVAL 1 DAY) FROM `{staging}`)
-             AND (SELECT DATE_ADD(DATE(MAX(event_time)), INTERVAL 1 DAY) FROM `{staging}`)
+           AND DATE(T.event_time) BETWEEN @min_day AND @max_day
         WHEN MATCHED AND S.updated > T.updated THEN UPDATE SET
           event_time = S.event_time, updated = S.updated, mag = S.mag,
           mag_type = S.mag_type, place = S.place, latitude = S.latitude,
@@ -211,10 +221,21 @@ def merge_staging_into_events(bq):
           source = S.source, ingested_at = S.ingested_at
         WHEN NOT MATCHED THEN INSERT ROW
     """
-    bq.query(merge_sql).result()
 
-    inserted = counts.to_insert or 0
-    updated = counts.to_update or 0
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter(
+                "min_day", "DATE", probe.min_day - dt.timedelta(days=1)
+            ),
+            bigquery.ScalarQueryParameter(
+                "max_day", "DATE", probe.max_day + dt.timedelta(days=1)
+            ),
+        ]
+    )
+    bq.query(merge_sql, job_config=job_config).result()
+
+    inserted = probe.to_insert or 0
+    updated = probe.to_update or 0
     log.info("merge complete: %d inserted, %d updated", inserted, updated)
     return inserted, updated
 
