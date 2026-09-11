@@ -54,6 +54,27 @@ Stage 3 (buffer/streaming) is **deliberately skipped** — see [Choices](#choice
 
 ---
 
+## Measured results
+
+Not estimates — these are what the build actually produced.
+
+| | |
+|---|---|
+| Historical seed | **4,843,083 events**, 1970-01-01 → 2026-09-10 |
+| Download | 37 min, 389 parquet chunks, 270 MB local, ~700 requests, 1 transient error (auto-recovered) |
+| Bulk load | 10 consolidated files → BigQuery, MERGE of 4.8M rows in **14.1s** |
+| In BigQuery | 1.118 GB across **681 monthly partitions** |
+| Integrity | 4,843,083 rows / 4,843,083 distinct ids → **0 duplicates** |
+| Idempotency | Re-ran ingest on an identical 263-event batch → **0 inserted, 0 updated** |
+| Seed/trickle seam | seed ends `09-10 23:51`, feed picks up `09-11 00:00` — no gap, no overlap |
+| Cost | **$0.00** |
+
+The seam is the part worth looking at. The gap-bridging run fetched 264 events from the
+live feed; 120 were already in the seed and 144 were new. The MERGE sorted that out
+without being told where the boundary was.
+
+---
+
 ## What's here
 
 | Path | What it does |
@@ -264,7 +285,7 @@ pip install -r requirements.txt
 gcloud auth application-default login
 
 python -m pipeline.bootstrap                       # create dataset + tables
-python -m seed.download_history --start-year 1970  # ~35 min, ONCE, writes to data/raw/
+python -m seed.download_history --start-year 1970  # ~37 min, ONCE, writes to data/raw/
 python -m seed.load_seed                           # bulk load from disk
 python -m pipeline.ingest --dry-run                # check without writing
 python -m pytest tests/ -q
