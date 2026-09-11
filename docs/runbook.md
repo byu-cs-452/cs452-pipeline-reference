@@ -100,15 +100,31 @@ the next one must not MERGE simultaneously.
 When the follow-up assignment is done, in this order:
 
 ```bash
-# 1. Stop the schedule first, so nothing writes to a half-deleted dataset.
+P=cs393-496021; R=us-central1
+
+# 1. Stop BOTH schedules first, so nothing writes to a half-deleted dataset.
+#    Missing either one leaves a job failing every 15 minutes forever.
 gh workflow disable ingest --repo byu-cs-452/cs452-pipeline-reference
+gh workflow disable healthcheck --repo byu-cs-452/cs452-pipeline-reference
+gcloud scheduler jobs delete usgs-ingest-every-15m --project=$P --location=$R --quiet
 
-# 2. Drop the data.
-gcloud alpha bq datasets delete usgs_pipeline --project=cs393-496021 --remove-tables
+# 2. Remove the compute.
+gcloud run jobs delete usgs-ingest --project=$P --region=$R --quiet
+gcloud artifacts repositories delete cloud-run-source-deploy --project=$P --location=$R --quiet
 
-# 3. Remove the identity plumbing.
-gcloud iam service-accounts delete usgs-pipeline-ingest@cs393-496021.iam.gserviceaccount.com --project=cs393-496021
-gcloud iam workload-identity-pools delete github-pool --project=cs393-496021 --location=global
+# 3. Drop the data.
+gcloud alpha bq datasets delete usgs_pipeline --project=$P --remove-tables
+
+# 4. Remove the identity plumbing.
+gcloud iam service-accounts delete usgs-pipeline-ingest@$P.iam.gserviceaccount.com --project=$P
+gcloud iam workload-identity-pools delete github-pool --project=$P --location=global
+```
+
+Verify nothing is still running afterwards:
+
+```bash
+gcloud scheduler jobs list --project=$P --location=$R
+gh run list --repo byu-cs-452/cs452-pipeline-reference --limit 5
 ```
 
 Nothing here bills by the hour, so there is no meter to stop — but leaving a job

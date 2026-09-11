@@ -71,6 +71,9 @@ Not estimates — these are what the build actually produced.
 | Integrity | 4,843,083 rows / 4,843,083 distinct ids → **0 duplicates** |
 | Idempotency | Re-ran ingest on an identical 263-event batch → **0 inserted, 0 updated** |
 | Seed/trickle seam | seed ends `09-10 23:51`, feed picks up `09-11 00:00` — no gap, no overlap |
+| Revision handling | a live run recorded **9 inserted, 6 updated** — USGS revised 6 events within 30 min |
+| Unattended operation | Cloud Scheduler run at `15:10:19`, **0 inserted / 2 updated**, nobody present |
+| Scheduler reliability | GitHub: **0 runs in the first hour**. Cloud Scheduler: fired first attempt, ~8.5s/run |
 | Cost | **$0.00** |
 
 The seam is the part worth looking at. The gap-bridging run fetched 264 events from the

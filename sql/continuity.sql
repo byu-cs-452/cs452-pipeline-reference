@@ -71,3 +71,26 @@ FROM `cs393-496021.usgs_pipeline.ingest_runs`
 WHERE status = 'error'
 ORDER BY started_at DESC
 LIMIT 50;
+
+
+-- ---------------------------------------------------------------------------
+-- 4. Runs by scheduler. Two independent schedulers drive the same job, so this
+--    is how you tell "one scheduler went quiet" apart from "the pipeline died".
+--
+--    During this build the github-schedule row sat at zero for over an hour
+--    while cloud-run-scheduler ran normally -- a distinction invisible in
+--    `events` and invisible in a ledger that does not record its own trigger.
+-- ---------------------------------------------------------------------------
+SELECT
+  trigger,
+  COUNT(*)                                                      AS runs,
+  COUNTIF(status = 'error')                                     AS failures,
+  MIN(started_at)                                               AS first_run,
+  MAX(started_at)                                               AS last_run,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(started_at), MINUTE)  AS minutes_since_last,
+  SUM(rows_inserted)                                            AS events_inserted,
+  SUM(rows_updated)                                             AS events_revised
+FROM `cs393-496021.usgs_pipeline.ingest_runs`
+WHERE started_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 8 DAY)
+GROUP BY trigger
+ORDER BY runs DESC;

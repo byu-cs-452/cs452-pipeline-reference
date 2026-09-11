@@ -31,10 +31,19 @@ no useful API for building reports), so it's written out here.
 ### 3. Run continuity — the honesty chart
 - **Time series**, source `ingest_runs`.
 - Dimension `started_at` (Date Hour), metric **Record Count**, breakdown `status`.
-- Healthy is ~4 runs/hour in `ok`/`no_new_data`. Gaps and red `error` bars both show up
-  here. **Do not hide this one** — the follow-up assignment explicitly rewards pointing
-  at an anomaly and explaining it, and a chart with no gaps is only credible if it's the
-  kind of chart that *would* show them.
+- Healthy is ~8 runs/hour across both schedulers in `ok`/`no_new_data`. Gaps and red
+  `error` bars both show up here. **Do not hide this one** — the follow-up assignment
+  explicitly rewards pointing at an anomaly and explaining it, and a chart with no gaps
+  is only credible if it's the kind of chart that *would* show them.
+
+### 3b. Runs by scheduler — which half is alive
+- Same source, breakdown dimension `trigger` instead of `status`.
+- Two schedulers write to this table, so this chart separates
+  `cloud-run-scheduler` from `github-schedule`. It is what lets you say *"GitHub stopped
+  firing"* rather than *"the pipeline died"* — a distinction you cannot make from
+  `events` and cannot make from a single-trigger ledger either.
+- During this build the `github-schedule` series was **flat at zero for over an hour**
+  while `cloud-run-scheduler` ran normally. That is the chart that diagnosed it.
 
 ### 4. Today vs. history — the join
 - **Scorecard** or bar chart, from query 1 of
