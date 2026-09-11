@@ -64,7 +64,9 @@ Stage 3 (buffer/streaming) is **deliberately skipped** — see [Choices](#choice
 | [`seed/download_history.py`](seed/download_history.py) | One-time history download to local parquet. Resumable. |
 | [`seed/load_seed.py`](seed/load_seed.py) | Bulk load from disk. Consolidates, loads, dedupes, merges. |
 | [`sql/`](sql/) | Schema DDL + the liveness, continuity, idempotency and history-join queries. |
+| [`pipeline/healthcheck.py`](pipeline/healthcheck.py) | Fails loudly when data goes stale — catches "green but writing nothing." |
 | [`.github/workflows/ingest.yml`](.github/workflows/ingest.yml) | The cron. |
+| [`.github/workflows/healthcheck.yml`](.github/workflows/healthcheck.yml) | The watchdog, every 6 hours. |
 | [`docs/runbook.md`](docs/runbook.md) | Failure modes and what to do about them. |
 
 ---
@@ -265,10 +267,13 @@ python -m pytest tests/ -q
   one-week assignment, fatal for a semester. A dated commit or a keepalive workflow fixes
   it; here it's documented rather than solved, because knowing the expiry exists is the
   lesson.
-- **No alerting beyond GitHub's failure emails.** A pipeline that fails *silently* —
-  runs green while writing nothing — wouldn't page anyone. The check exists as a query
-  (`minutes_since_write` in `liveness.sql`) but nothing watches it. Real answer: a
-  scheduled check that fails when freshness exceeds an hour.
+- **The watchdog shares fate with what it watches.**
+  [`healthcheck.yml`](.github/workflows/healthcheck.yml) runs every 6 hours and fails if
+  nothing has been written in 90 minutes — which catches the nastiest failure, a job
+  that runs green while writing nothing. But it runs on the same GitHub Actions
+  scheduler as the ingest job. If Actions stops running workflows for this repo, both
+  die together and nothing alerts. A monitor that can't outlive the thing it monitors
+  isn't really a monitor; genuinely independent checking means a different provider.
 - **`ingest_runs` grows forever** at 96 rows/day. Irrelevant at this scale, wrong at a
   larger one; a partition expiry policy is the fix.
 - **The seed starts at 1970.** Pre-1970 coverage is sparse and instrumentally

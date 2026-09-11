@@ -1,0 +1,45 @@
+name: healthcheck
+
+# Catches the failure the ingest job cannot catch itself: running green while
+# writing nothing. A red X here means the data stopped, whatever the ingest runs
+# claim.
+#
+# Also serves as the keepalive. GitHub disables scheduled workflows in a repo
+# with no activity for 60 days -- this job's own runs do not count as activity,
+# but its failure emails will get a human to push something, which does.
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+      BQ_DATASET: ${{ vars.BQ_DATASET }}
+      BQ_LOCATION: ${{ vars.BQ_LOCATION }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Check freshness
+        run: python -m pipeline.healthcheck --max-age-minutes 90
