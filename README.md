@@ -1,6 +1,6 @@
 # USGS Earthquake Pipeline — CS 452 reference solution
 
-A worked example of the [Build a Pipeline](../pipeline/build_a_pipeline.md) assignment,
+A worked example of the [Build a Pipeline](https://github.com/byu-cs-452/byu-cs-452-class-content/blob/main/pipeline/build_a_pipeline.md) assignment,
 schema-consistent tier. Bulk-loads ~50 years of the USGS earthquake catalog, then keeps
 itself current every 15 minutes with nobody pushing the button.
 
