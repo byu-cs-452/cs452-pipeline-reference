@@ -6,6 +6,20 @@ itself current every 15 minutes with nobody pushing the button.
 
 **Stack:** USGS FDSN + live GeoJSON feed → Cloud Scheduler/Cloud Run **and** GitHub Actions → BigQuery → Looker Studio
 
+> **Status: paused since 2026-11-25.** The semester's pipeline unit is over, so both schedulers
+> are turned off. The BigQuery data and the dashboard are still there but no longer update.
+> To turn it back on (requires access to this repo and the GCP project):
+>
+> ```sh
+> gh workflow enable ingest      -R byu-cs-452/cs452-pipeline-reference
+> gh workflow enable healthcheck -R byu-cs-452/cs452-pipeline-reference
+> gcloud scheduler jobs resume usgs-ingest-every-15m --project cs452-508317 --location us-central1
+> ```
+>
+> Then check the Actions tab and the Cloud Scheduler console to confirm runs are happening.
+> GitHub also disables scheduled workflows after 60 days with no repo activity, so a new
+> commit may be needed for the GitHub cron to fire.
+
 ---
 
 ## Architecture
